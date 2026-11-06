@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aeroporto Hexagonal</title>
+<style>
+  :root {
+    --fundo: #f3f5f8;
+    --cartao: #ffffff;
+    --texto: #1c2733;
+    --suave: #5d6b7a;
+    --borda: #dde3ea;
+    --destaque: #0b5cad;
+    --ok-fundo: #e5f4ea;
+    --ok-texto: #1a6b3a;
+    --erro-fundo: #fbe9e7;
+    --erro-texto: #a3281a;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--fundo);
+    color: var(--texto);
+    font: 16px/1.5 "Segoe UI", system-ui, sans-serif;
+  }
+
+  header {
+    background: var(--destaque);
+    color: #fff;
+    padding: 20px 24px;
+  }
+
+  header h1 { margin: 0; font-size: 24px; }
+  header p { margin: 2px 0 0; opacity: .9; }
+
+  main {
+    display: grid;
+    grid-template-columns: 340px minmax(0, 1fr);
+    gap: 20px;
+    max-width: 1120px;
+    margin: 20px auto;
+    padding: 0 20px;
+    align-items: start;
+  }
+
+  .coluna { display: grid; gap: 20px; min-width: 0; }
+
+  section {
+    background: var(--cartao);
+    border: 1px solid var(--borda);
+    border-radius: 8px;
+    padding: 18px 20px;
+  }
+
+  h2 { margin: 0 0 12px; font-size: 18px; }
+
+  label {
+    display: block;
+    margin-bottom: 12px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  input, select {
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+    padding: 8px 10px;
+    border: 1px solid var(--borda);
+    border-radius: 6px;
+    background: #fff;
+    color: inherit;
+    font: inherit;
+  }
+
+  .dica {
+    margin: -6px 0 12px;
+    color: var(--suave);
+    font-size: 13px;
+  }
+
+  button {
+    width: 100%;
+    padding: 10px;
+    border: 0;
+    border-radius: 6px;
+    background: var(--destaque);
+    color: #fff;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  button:hover { filter: brightness(1.1); }
+  button:disabled { opacity: .6; cursor: default; }
+
+  .mensagem {
+    margin: 12px 0 0;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 14px;
+  }
+
+  .mensagem.ok { background: var(--ok-fundo); color: var(--ok-texto); }
+  .mensagem.erro { background: var(--erro-fundo); color: var(--erro-texto); }
+
+  .tabela { overflow-x: auto; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+
+  th, td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--borda);
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  tbody tr:last-child td { border-bottom: 0; }
+
+  th { color: var(--suave); font-size: 13px; font-weight: 600; }
+
+  th.numero, td.numero { text-align: right; font-variant-numeric: tabular-nums; }
+
+  td.codigo { font-weight: 600; }
+
+  .vazio { margin: 0; color: var(--suave); }
+
+  @media (max-width: 800px) {
+    main { grid-template-columns: minmax(0, 1fr); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Aeroporto Hexagonal</h1>
+  <p>Agendamento de voos</p>
+</header>
+
+<main>
+  <section>
+    <h2>Agendar voo</h2>
+    <form id="formulario">
+      <label>Código do voo
+        <input name="codigo" placeholder="LA100" autocomplete="off" required>
+      </label>
+      <label>Modelo do avião
+        <select name="modelo" id="modelo" required></select>
+      </label>
+      <p class="dica" id="limites"></p>
+      <label>Destino
+        <input name="destino" placeholder="Lisboa" autocomplete="off" required>
+      </label>
+      <label>Distância (km)
+        <input name="distancia" type="number" step="1" placeholder="7900" required>
+      </label>
+      <label>Passageiros
+        <input name="passageiros" type="number" step="1" placeholder="300" required>
+      </label>
+      <button type="submit" id="agendar">Agendar</button>
+    </form>
+    <p class="mensagem" id="mensagem" role="status" hidden></p>
+  </section>
+
+  <div class="coluna">
+    <section>
+      <h2>Voos agendados</h2>
+      <div id="voos"></div>
+    </section>
+
+    <section>
+      <h2>Catálogo de aviões</h2>
+      <div id="avioes"></div>
+    </section>
+  </div>
+</main>
+
+<script>
+  // Esta página é só mais um cliente da API: as regras continuam no domínio.
+  const formulario = document.getElementById("formulario");
+  const seletorDeModelo = document.getElementById("modelo");
+  const limites = document.getElementById("limites");
+  const mensagem = document.getElementById("mensagem");
+  const botao = document.getElementById("agendar");
+  const numero = new Intl.NumberFormat("pt-BR");
+  let avioes = [];
+
+  function mostrarMensagem(texto, tipo) {
+    mensagem.textContent = texto;
+    mensagem.className = "mensagem " + tipo;
+    mensagem.hidden = false;
+  }
+
+  async function buscar(rota) {
+    const resposta = await fetch(rota);
+    if (!resposta.ok) {
+      throw new Error("Falha ao carregar " + rota);
+    }
+    return resposta.json();
+  }
+
+  // Usa textContent para que nada digitado pelo usuário seja interpretado como HTML.
+  function preencherTabela(destino, colunas, linhas, textoVazio) {
+    if (linhas.length === 0) {
+      const vazio = document.createElement("p");
+      vazio.className = "vazio";
+      vazio.textContent = textoVazio;
+      destino.replaceChildren(vazio);
+      return;
+    }
+
+    const cabecalho = document.createElement("tr");
+    for (const coluna of colunas) {
+      const celula = document.createElement("th");
+      celula.textContent = coluna.titulo;
+      celula.className = coluna.classe || "";
+      cabecalho.append(celula);
+    }
+
+    const corpo = document.createElement("tbody");
+    for (const linha of linhas) {
+      const tr = document.createElement("tr");
+      for (const coluna of colunas) {
+        const celula = document.createElement("td");
+        celula.textContent = coluna.valor(linha);
+        celula.className = coluna.classe || "";
+        tr.append(celula);
+      }
+      corpo.append(tr);
+    }
+
+    const titulo = document.createElement("thead");
+    titulo.append(cabecalho);
+    const tabela = document.createElement("table");
+    tabela.append(titulo, corpo);
+    const rolagem = document.createElement("div");
+    rolagem.className = "tabela";
+    rolagem.append(tabela);
+    destino.replaceChildren(rolagem);
+  }
+
+  async function atualizarVoos() {
+    const voos = await buscar("/voos");
+    preencherTabela(document.getElementById("voos"), [
+      { titulo: "Código", valor: v => v.codigo, classe: "codigo" },
+      { titulo: "Modelo", valor: v => v.modelo },
+      { titulo: "Destino", valor: v => v.destino },
+      { titulo: "Distância (km)", valor: v => numero.format(v.distanciaKm), classe: "numero" },
+      { titulo: "Passageiros", valor: v => numero.format(v.passageiros), classe: "numero" },
+    ], voos, "Nenhum voo agendado ainda.");
+  }
+
+  function mostrarLimites() {
+    const aviao = avioes.find(a => a.codigo === seletorDeModelo.value);
+    limites.textContent = aviao
+      ? "Até " + numero.format(aviao.capacidade) + " passageiros e " + numero.format(aviao.alcanceKm) + " km."
+      : "";
+  }
+
+  async function carregarAvioes() {
+    avioes = await buscar("/avioes");
+    seletorDeModelo.replaceChildren(...avioes.map(a => new Option(a.nome, a.codigo)));
+    mostrarLimites();
+    preencherTabela(document.getElementById("avioes"), [
+      { titulo: "Código", valor: a => a.codigo, classe: "codigo" },
+      { titulo: "Modelo", valor: a => a.nome },
+      { titulo: "Capacidade", valor: a => numero.format(a.capacidade), classe: "numero" },
+      { titulo: "Alcance (km)", valor: a => numero.format(a.alcanceKm), classe: "numero" },
+    ], avioes, "Nenhum modelo cadastrado.");
+  }
+
+  async function agendar(evento) {
+    evento.preventDefault();
+    botao.disabled = true;
+    try {
+      const resposta = await fetch("/voos", {
+        method: "POST",
+        body: new URLSearchParams(new FormData(formulario)),
+      });
+      const dados = await resposta.json();
+      if (!resposta.ok) {
+        mostrarMensagem(dados.erro, "erro");
+        return;
+      }
+      mostrarMensagem("Voo " + dados.codigo + " agendado para " + dados.destino + ".", "ok");
+      const modelo = seletorDeModelo.value;
+      formulario.reset();
+      seletorDeModelo.value = modelo;
+      mostrarLimites();
+      await atualizarVoos();
+    } catch {
+      mostrarMensagem("Não foi possível falar com o servidor.", "erro");
+    } finally {
+      botao.disabled = false;
+    }
+  }
+
+  seletorDeModelo.addEventListener("change", mostrarLimites);
+  formulario.addEventListener("submit", agendar);
+
+  Promise.all([carregarAvioes(), atualizarVoos()])
+    .catch(() => mostrarMensagem("Não foi possível falar com o servidor.", "erro"));
+</script>
+</body>
+</html>
